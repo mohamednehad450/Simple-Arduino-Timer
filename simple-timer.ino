@@ -6,8 +6,14 @@
 #include "RTClib.h"
 
 #define no_timers 4
+#define relay_no 4
 #define MaxMenuPos no_timers*4-1
 
+#define Relay1 A0
+#define Relay2 A1
+#define Relay3 A2
+#define Relay4 A3
+const byte RelaysPins[relay_no] = {Relay1, Relay2, Relay3, Relay4};
 
 // RTC setup
 RTC_DS1307 RTC;
@@ -30,9 +36,22 @@ LiquidCrystal_I2C lcd(0x3F, 4, 5);
 
 // Pins
 
+// constent
+
+//  Week days in binary starting with sunday
+const byte WeekDays[7] = {0b00000001, 0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000, 0b01000000};
+const char WeekSym[7] = {'S', 'M', 'T', 'W', 'T', 'F', 'S'};
+
+const byte Relays[7] = {0b00000001, 0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000, 0b01000000};
+
+const String Dunits[3] = {"sec", "min", "hour"};
+
+
 
 // Varibles
-
+boolean RelaysStates[relay_no] = {false, false, false, false};
+DateTime RelaysCloseTime[relay_no];
+int lastMin = 0;
 
 // Menu
 boolean MenuMode = false;
@@ -43,11 +62,7 @@ byte MenuPos = 0;  // menu postion
 long lastMillis = 0; // used for interrupt
 
 
-//  Week days in binary starting with sunday
-unsigned char WeekDays[7] = {0b00000001, 0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000, 0b01000000};
 
-char WeekSym[7] = {'S', 'M', 'T', 'W', 'T', 'F', 'S'};
-String Dunits[3] = {"sec", "min", "hour"};
 
 // Timer data
 typedef struct Timer {
@@ -96,11 +111,10 @@ void initTimers() {
 
 void getTimers() {
 
-  initTimers();   //THIS SHOULD RUN ONCE
+  //initTimers();   //THIS SHOULD RUN ONCE
 
 
   for (int i = 0; i < no_timers; i++) {
-    byte load;
     // hour
     (Timers[i]).hour = EEPROM.read(i * 6);
 
@@ -146,8 +160,6 @@ void ShowMenu() {
       lcd.print("0");
     }
     lcd.print((Timers[Timer_no]).minute);
-
-
   }
 
   // Timer days screen
@@ -169,26 +181,26 @@ void ShowMenu() {
         lcd.print(" ");
       }
     }
-
-
-
   }
+
+
   // Timer duration screen
   if ((MenuPos % 4) == 2) {
+
     lcd.setCursor(0, 0);
+
     lcd.print("Timer");
     lcd.print(Timer_no);
     lcd.print(" : Duration");
 
     lcd.setCursor(0, 1);
+
     lcd.print((Timers[Timer_no]).duration);
     lcd.print(" ");
     lcd.print(Dunits[(Timers[Timer_no]).dunit]);
-
-
-
-
   }
+
+
   // Timer relays screen
   if ((MenuPos % 4) == 3) {
     lcd.setCursor(0, 0);
@@ -196,6 +208,16 @@ void ShowMenu() {
     lcd.print(Timer_no);
     lcd.print(" : Relays");
 
+    lcd.setCursor(0, 1);
+
+    for (int i = 0; i < relay_no; i++) {
+      lcd.print(i + 1);
+      if (Relays[i] & (Timers[Timer_no]).relays) {
+        lcd.print("X");
+      } else {
+        lcd.print(" ");
+      }
+    }
   }
 
 }
@@ -253,6 +275,86 @@ void Menu() {
   }
 }
 
+
+
+
+void should_run(DateTime now) {
+  
+  // to check  Timers only once a minute
+  if (lastMin != now.minute()) {
+    lastMin = now.minute();
+
+    // getting the number of day in the week
+    byte today = now.dayOfTheWeek();
+
+    // going through every timer
+    for (int i = 0; i < no_timers; i++) {
+
+      // if today is one of the Timer days
+      if (WeekDays[today] & (Timers[i]).days) {
+
+        // if the time of the Timer has come
+        if ((Timers[i]).hour == now.hour() && (Timers[i]).minute == now.minute()) {
+
+          // converting duration into seconds
+          int dur;
+          for (int k = (Timers[i]).dunit; k > 0; k--) {
+            dur = (Timers[i]).duration * 60;
+          }
+
+          // see which relay should be turned on
+          for (int j = 0; i < relay_no; j++) {
+            if ((Relays[j] & (Timers[i]).relays) && !(RelaysStates[j])) {
+
+              RelaysStates[j] = true;
+
+              RelaysCloseTime[j] = (now.unixtime() + dur);
+
+              digitalWrite(RelaysPins[i], HIGH);
+
+            }
+          }
+        }
+      }
+    }
+
+  }
+
+
+}
+
+
+
+void should_stop(DateTime now) {
+
+  for(int i = 0; i < relay_no; i++){
+    if (RelaysStates[i]){
+      if ((RelaysCloseTime[i]).unixtime() >= now.unixtime()){
+        digitalWrite(RelaysPins[i], LOW);
+      }      
+    }
+  }
+
+}
+
+
+
+void updateTimers(DateTime now) {
+
+}
+
+
+
+void checkTimers(DateTime now) {
+
+  should_run(now);
+
+  should_stop(now);
+
+  updateTimers(now);
+
+}
+
 void setup() {
 
   Wire.begin();
@@ -266,9 +368,14 @@ void setup() {
   digitalWrite(MenuPinD, HIGH);
   attachInterrupt(MenuPin, Menu, LOW);
 
+  // Relays pins
+  for (int i = 0; i < relay_no; i++) {
+    pinMode(RelaysPins[i], OUTPUT);
+    digitalWrite(RelaysPins[i], LOW);
+  }
+
   // getting timers from EEPROM
   getTimers();
-
 
 }
 
@@ -279,14 +386,16 @@ void loop() {
     ShowMenu();
 
 
+
     delay(500);
   }
   else {
+
     DateTime now = RTC.now();
 
     ShowDateTime(now);
 
-    //checkAlarms(now);
+    checkTimers(now);
 
     delay(1000);
   }
