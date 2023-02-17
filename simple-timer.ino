@@ -39,10 +39,10 @@ LiquidCrystal_I2C lcd(0x3F, 4, 5);
 // constent
 
 //  Week days in binary starting with sunday
-const byte WeekDays[7] = {0b00000001, 0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000, 0b01000000};
+const byte WeekDays[7] = {B00000001, B00000010, B00000100, B00001000, B00010000, B00100000, B01000000};
 const char WeekSym[7] = {'S', 'M', 'T', 'W', 'T', 'F', 'S'};
 
-const byte Relays[7] = {0b00000001, 0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000, 0b01000000};
+const byte Relays[7] = {B00000001, B00000010, B00000100, B00001000, B00010000, B00100000, B01000000};
 
 const String Dunits[3] = {"sec", "min", "hour"};
 
@@ -50,7 +50,7 @@ const String Dunits[3] = {"sec", "min", "hour"};
 
 // Varibles
 boolean RelaysStates[relay_no] = {false, false, false, false};
-DateTime RelaysCloseTime[relay_no];
+uint32_t RelaysCloseTime[relay_no];
 int lastMin = 0;
 
 // Menu
@@ -58,6 +58,7 @@ boolean MenuMode = false;
 byte MenuPin = 0;  //interrupt pin
 byte MenuPinD = 2; //digital pin
 byte MenuPos = 0;  // menu postion
+boolean NewMenu = false;
 
 long lastMillis = 0; // used for interrupt
 
@@ -89,7 +90,7 @@ void initTimers() {
     EEPROM.write(i * 6 + 1, load);
 
     // days
-    load = 0b00000000;
+    load = B00000000;
     EEPROM.write(i * 6 + 2, load);
 
     // duration
@@ -101,7 +102,7 @@ void initTimers() {
     EEPROM.write(i * 6 + 4, load);
 
     // relays
-    load = 0b00000000;
+    load = B00000000;
     EEPROM.write(i * 6 + 5, load);
 
   }
@@ -138,14 +139,22 @@ void getTimers() {
 
 void ShowMenu() {
 
-  lcd.clear();
+  // to avoid clearing in every cycle
+  if (NewMenu) {
+    lcd.clear();
+    NewMenu = false;
+  }
 
-  int Timer_no = ((MenuPos / 4) + 1);
+  
+  // getting timer number from the menu pos
+  byte Timer_no = (MenuPos / 4);
+  byte Display_Number =  (MenuPos / 4) + 1;
+
   // Timer time screen
   if ((MenuPos % 4) == 0) {
     lcd.setCursor(0, 0);
     lcd.print("Timer");
-    lcd.print(Timer_no);
+    lcd.print(Display_Number);
     lcd.print(" : Time");
 
     lcd.setCursor(0, 1);
@@ -167,7 +176,7 @@ void ShowMenu() {
     lcd.setCursor(0, 0);
 
     lcd.print("Timer");
-    lcd.print(Timer_no);
+    lcd.print(Display_Number);
     lcd.print(" : Days");
 
     lcd.setCursor(0, 1);
@@ -190,7 +199,7 @@ void ShowMenu() {
     lcd.setCursor(0, 0);
 
     lcd.print("Timer");
-    lcd.print(Timer_no);
+    lcd.print(Display_Number);
     lcd.print(" : Duration");
 
     lcd.setCursor(0, 1);
@@ -205,7 +214,7 @@ void ShowMenu() {
   if ((MenuPos % 4) == 3) {
     lcd.setCursor(0, 0);
     lcd.print("Timer");
-    lcd.print(Timer_no);
+    lcd.print(Display_Number);
     lcd.print(" : Relays");
 
     lcd.setCursor(0, 1);
@@ -260,7 +269,13 @@ void ShowDateTime(DateTime now) {
 }
 
 void Menu() {
+
+  NewMenu = true;
+
+  // adding 150ms delay between interrupts
   if ((millis() - lastMillis) > 150) {
+
+
     if (MenuMode == false) {
       MenuMode = true;
     }
@@ -279,7 +294,7 @@ void Menu() {
 
 
 void should_run(DateTime now) {
-  
+
   // to check  Timers only once a minute
   if (lastMin != now.minute()) {
     lastMin = now.minute();
@@ -291,26 +306,29 @@ void should_run(DateTime now) {
     for (int i = 0; i < no_timers; i++) {
 
       // if today is one of the Timer days
-      if (WeekDays[today] & (Timers[i]).days) {
+      if ((Timers[i]).days & WeekDays[today]) {
+
 
         // if the time of the Timer has come
-        if ((Timers[i]).hour == now.hour() && (Timers[i]).minute == now.minute()) {
+        if (((Timers[i]).hour == now.hour()) && ((Timers[i]).minute == now.minute())) {
+
+
+          int dur = (Timers[i]).duration;
 
           // converting duration into seconds
-          int dur;
           for (int k = (Timers[i]).dunit; k > 0; k--) {
-            dur = (Timers[i]).duration * 60;
+            dur = dur * 60;
           }
 
           // see which relay should be turned on
-          for (int j = 0; i < relay_no; j++) {
+          for (int j = 0; j < relay_no; j++) {
             if ((Relays[j] & (Timers[i]).relays) && !(RelaysStates[j])) {
 
               RelaysStates[j] = true;
 
               RelaysCloseTime[j] = (now.unixtime() + dur);
 
-              digitalWrite(RelaysPins[i], HIGH);
+              digitalWrite(RelaysPins[j], HIGH);
 
             }
           }
@@ -319,41 +337,24 @@ void should_run(DateTime now) {
     }
 
   }
-
-
 }
-
-
 
 void should_stop(DateTime now) {
 
-  for(int i = 0; i < relay_no; i++){
-    if (RelaysStates[i]){
-      if ((RelaysCloseTime[i]).unixtime() >= now.unixtime()){
+  for (int i = 0; i < relay_no; i++) {
+    if (RelaysStates[i]) {
+      if (now.unixtime() >= RelaysCloseTime[i]) {
         digitalWrite(RelaysPins[i], LOW);
-      }      
+        RelaysStates[i] = false;
+      }
     }
   }
-
 }
 
-
-
-void updateTimers(DateTime now) {
-
+void HandleInput(){
+  
 }
 
-
-
-void checkTimers(DateTime now) {
-
-  should_run(now);
-
-  should_stop(now);
-
-  updateTimers(now);
-
-}
 
 void setup() {
 
@@ -377,6 +378,7 @@ void setup() {
   // getting timers from EEPROM
   getTimers();
 
+
 }
 
 void loop() {
@@ -385,9 +387,10 @@ void loop() {
 
     ShowMenu();
 
+    HandleInput();
 
 
-    delay(500);
+    delay(150);
   }
   else {
 
@@ -395,7 +398,14 @@ void loop() {
 
     ShowDateTime(now);
 
-    checkTimers(now);
+    // Checking all Timers that should run
+    should_run(now);
+
+    // Checking every Relay that should stop
+    should_stop(now);
+
+
+
 
     delay(1000);
   }
