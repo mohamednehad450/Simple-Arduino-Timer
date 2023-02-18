@@ -6,28 +6,28 @@
 
 // Constants ----------------------------------------------------------------------------------------------------
 
-#define TIMERS_COUNT 8 // max is 8 (due to menu restriction)
+#define TIMERS_COUNT 8  // max is 8 (due to menu restriction)
 #define RELAYS_COUNT 8  // max is 8 (due to menu restriction and Timer datatype restriction)
-const uint32_t MAX_DURATION = 24UL * 60UL* 60UL;
+const uint32_t MAX_DURATION = 24UL * 60UL * 60UL;
 
 // Relay DataType
 typedef struct Relay {
-  byte on_state;   // HIGH or LOW
-  byte pin;        // pin number
+  byte on_state;  // HIGH or LOW
+  byte pin;       // pin number
 };
 
 // Change pin and on_state to correspond with your setup)
-const Relay RELAY_1 = {on_state: LOW, pin: A0};
-const Relay RELAY_2 = {on_state: LOW, pin: A1};
-const Relay RELAY_3 = {on_state: LOW, pin: A2};
-const Relay RELAY_4 = {on_state: LOW, pin: A3};
-const Relay RELAY_5 = {on_state: LOW, pin: 13};
-const Relay RELAY_6 = {on_state: LOW, pin: 12};
-const Relay RELAY_7 = {on_state: LOW, pin: 11};
-const Relay RELAY_8 = {on_state: LOW, pin: 10};
+const Relay RELAY_1 = { on_state: LOW, pin: A0 };
+const Relay RELAY_2 = { on_state: LOW, pin: A1 };
+const Relay RELAY_3 = { on_state: LOW, pin: A2 };
+const Relay RELAY_4 = { on_state: LOW, pin: A3 };
+const Relay RELAY_5 = { on_state: LOW, pin: 13 };
+const Relay RELAY_6 = { on_state: LOW, pin: 12 };
+const Relay RELAY_7 = { on_state: LOW, pin: 11 };
+const Relay RELAY_8 = { on_state: LOW, pin: 10 };
 
 
-const Relay RELAYS[8] = {RELAY_1, RELAY_2, RELAY_3, RELAY_4, RELAY_5, RELAY_6, RELAY_7, RELAY_8};
+const Relay RELAYS[8] = { RELAY_1, RELAY_2, RELAY_3, RELAY_4, RELAY_5, RELAY_6, RELAY_7, RELAY_8 };
 
 // Buttons pins
 const byte SELECT_PIN = 0;  // Pin number 2 on the Arduino Uno, INT0
@@ -41,7 +41,7 @@ const int INPUT_TICK = 300;
 const int MENU_MODE_TICK = 150;
 const int NORMAL_MODE_TICK = 1000;
 
-const byte PAGE_PER_TIMER = 4; 
+const byte PAGE_PER_TIMER = 4;
 
 // RTC setup
 RTC_DS1307 RTC;
@@ -50,16 +50,16 @@ RTC_DS1307 RTC;
 LiquidCrystal_I2C lcd(0x3F, 16, 2);
 
 //  Week days in binary starting with sunday
-const byte weekdays[7] = {B00000001, B00000010, B00000100, B00001000, B00010000, B00100000, B01000000};
+const byte weekdays[7] = { B00000001, B00000010, B00000100, B00001000, B00010000, B00100000, B01000000 };
 
 // Week days symbols for display
-const char weekdays_symbols[7] = {'S', 'M', 'T', 'W', 'T', 'F', 'S'};
+const char weekdays_symbols[7] = { 'S', 'M', 'T', 'W', 'T', 'F', 'S' };
 
 // Duration units for display
-const String time_units[3] = {"sec", "min", "hour"};
+const String time_units[3] = { "sec", "min", "hour" };
 
 // Relays in binary
-const byte Relays[8] = {B00000001, B00000010, B00000100, B00001000, B00010000, B00100000, B01000000, B10000000};
+const byte Relays[8] = { B00000001, B00000010, B00000100, B00001000, B00010000, B00100000, B01000000, B10000000 };
 
 
 //------------------------------------------------------------------------------------------------------------------
@@ -74,8 +74,8 @@ boolean RelaysStates[RELAYS_COUNT];      // to keep track of running relays
 boolean main_menu_mode = false;
 byte main_menu_index = 0;
 boolean timers_menu_mode = false;
-byte timers_menu_index = 0; 
-byte timers_menu_subindex = 0; 
+byte timers_menu_index = 0;
+byte timers_menu_subindex = 0;
 boolean refresh_LCD = false;
 
 
@@ -83,40 +83,39 @@ boolean time_set_mode = false;
 DateTime temp_time;
 boolean update_RTC_time = false;
 
-long lastMillis = 0; // used for interrupt
+long lastMillis = 0;  // used for interrupt
 
 byte cursor_index = 0;  // SubMenu Postion
 
 // Timers
-boolean UpdateTimers = false;      // tells weather or not the timers were modified
-boolean ActiveTimers[TIMERS_COUNT];   // keeps track of active timer in a given minute (not to check them again in the same minute)
-byte lastMin;   // to keep track of the last minute to reset ActiveTimers
+boolean UpdateTimers = false;        // tells weather or not the timers were modified
+boolean ActiveTimers[TIMERS_COUNT];  // keeps track of active timer in a given minute (not to check them again in the same minute)
+byte lastMin;                        // to keep track of the last minute to reset ActiveTimers
 
 
 // Timer DataType
 typedef struct Timer {
-  byte hour;       // the hour and
-  byte minute;     //             the minute the timer will run on
-  byte days;       // days the timer will run in
-  uint32_t duration;   // duration in seconds
-  byte relays;     // the relays of the timer
+  byte hour;          // the hour and
+  byte minute;        //             the minute the timer will run on
+  byte days;          // days the timer will run in
+  uint32_t duration;  // duration in seconds
+  byte relays;        // the relays of the timer
 };
 
 
 // Timers array
-Timer* Timers = (Timer*) malloc(sizeof(Timer) * TIMERS_COUNT);
+Timer* Timers = (Timer*)malloc(sizeof(Timer) * TIMERS_COUNT);
 
 //-----------------------------------------------------------------------------------------------------------
 
 
 void relay_on(Relay r) {
-    digitalWrite(r.pin, r.on_state);
+  digitalWrite(r.pin, r.on_state);
 }
 void relay_off(Relay r) {
   if (r.on_state == HIGH) {
     digitalWrite(r.pin, LOW);
-  }
-  else {
+  } else {
     digitalWrite(r.pin, HIGH);
   }
 }
@@ -124,29 +123,29 @@ void relay_off(Relay r) {
 // gets the timers from the EEPROM
 void getTimers() {
   for (int i = 0; i < TIMERS_COUNT; i++) {
-    int eeAddress = sizeof(Timer) * i; //EEPROM address to start reading from
-    EEPROM.get( eeAddress, Timers[i] );
+    int eeAddress = sizeof(Timer) * i;  //EEPROM address to start reading from
+    EEPROM.get(eeAddress, Timers[i]);
   }
 }
 
 // update the current timers to EEPROM
 void UpdateTimersEEPROM() {
   for (int i = 0; i < TIMERS_COUNT; i++) {
-    int eeAddress = sizeof(Timer) * i; //EEPROM address to start reading from
+    int eeAddress = sizeof(Timer) * i;  //EEPROM address to start reading from
     EEPROM.put(eeAddress, Timers[i]);
   }
 }
 
 
 void ResetTimer(byte timer_index) {
-  
+
   (Timers[timer_index]).hour = 0;
   (Timers[timer_index]).minute = 0;
   (Timers[timer_index]).days = B00000000;
   (Timers[timer_index]).duration = 0;
   (Timers[timer_index]).relays = B00000000;
-  
-  int eeAddress = sizeof(Timer) * timer_index; //EEPROM address to start reading from
+
+  int eeAddress = sizeof(Timer) * timer_index;  //EEPROM address to start reading from
   EEPROM.put(eeAddress, Timers[timer_index]);
 }
 
@@ -171,8 +170,7 @@ void Menu() {
         if (cursor_index == 1) {
           time_set_mode = true;
           main_menu_mode = false;
-        }
-        else {
+        } else {
           timers_menu_mode = false;
           main_menu_mode = false;
         }
@@ -196,7 +194,7 @@ void Menu() {
       timers_menu_index++;
       timers_menu_subindex++;
     }
-    
+
     // In Normal mode
     else {
       timers_menu_mode = true;
@@ -206,7 +204,6 @@ void Menu() {
     cursor_index = 0;
     lastMillis = millis();
     refresh_LCD = true;
-
   }
 }
 
@@ -217,7 +214,6 @@ void SubMenu() {
     cursor_index++;
     lastMillis = millis();
   }
-
 }
 
 
@@ -260,8 +256,7 @@ void main_menu_screen() {
     }
     lcd.setCursor(cursor_index * 2, 1);
     lcd.cursor();
-  }
-  else if (main_menu_index == 1) {
+  } else if (main_menu_index == 1) {
     lcd.setCursor(0, 0);
     lcd.print("Set Date/Time? :");
 
@@ -275,8 +270,7 @@ void main_menu_screen() {
     lcd.cursor();
 
 
-  }
-  else {
+  } else {
     lcd.setCursor(0, 0);
     lcd.print("Rest Timer:");
 
@@ -292,16 +286,13 @@ void main_menu_screen() {
     }
     lcd.setCursor(cursor_index * 2, 1);
     lcd.cursor();
-
   }
-
 }
 
 void change_time_screen() {
   if (refresh_LCD) {
     lcd.clear();
     refresh_LCD = false;
-
   }
 
   print_data_time(temp_time);
@@ -342,7 +333,6 @@ void change_time_screen_input() {
     if (cursor_index == 5) {
       temp_time = temp_time + TimeSpan(0, 0, 0, 1);
     }
-
   }
   //SubMenuDown
   if (digitalRead(DOWN_PIN) == HIGH) {
@@ -367,7 +357,6 @@ void change_time_screen_input() {
       temp_time = temp_time - TimeSpan(0, 0, 0, 1);
     }
   }
-
 }
 
 
@@ -386,7 +375,6 @@ void main_menu_screen_input() {
       main_menu_index = 2;
     } else main_menu_index--;
   }
-
 }
 
 
@@ -396,7 +384,7 @@ void timers_screen() {
     timers_menu_mode = false;
     timers_menu_subindex = 0;
   }
-  
+
   else {
     // to clear only once every new menu
     if (refresh_LCD) {
@@ -406,7 +394,7 @@ void timers_screen() {
 
     // getting timer number from the menu pos
     byte timer_index = (timers_menu_index / PAGE_PER_TIMER);
-    byte Display_Number =  (timers_menu_index / PAGE_PER_TIMER) + 1;
+    byte Display_Number = (timers_menu_index / PAGE_PER_TIMER) + 1;
 
     lcd.cursor();
 
@@ -441,8 +429,7 @@ void timers_screen() {
         lcd.print(weekdays_symbols[i]);
         if (weekdays[i] & (Timers[timer_index]).days) {
           lcd.print("*");
-        }
-        else {
+        } else {
           lcd.print(" ");
         }
       }
@@ -450,7 +437,6 @@ void timers_screen() {
         cursor_index = 0;
       }
       lcd.setCursor(cursor_index * 2, 1);
-
     }
 
     // Timer duration screen
@@ -464,16 +450,15 @@ void timers_screen() {
 
       lcd.setCursor(0, 1);
 
-      const byte sec = round((Timers[timer_index]).duration%60);
-      const byte min = floor((Timers[timer_index]).duration/60%60);
-      const byte hour = floor((Timers[timer_index]).duration/60/60);
+      const byte sec = round((Timers[timer_index]).duration % 60);
+      const byte min = floor((Timers[timer_index]).duration / 60 % 60);
+      const byte hour = floor((Timers[timer_index]).duration / 60 / 60);
       PrintTime(hour, min, sec);
 
       if (cursor_index > 2) {
         cursor_index = 0;
       }
-      lcd.setCursor((cursor_index * 3)+1, 1);
-
+      lcd.setCursor((cursor_index * 3) + 1, 1);
     }
 
     // Timer relays screen
@@ -516,8 +501,7 @@ void timers_screen_input() {
     if ((timers_menu_index % PAGE_PER_TIMER) == 0) {
       if (cursor_index == 0) {
         (Timers[timer_index]).hour = ((Timers[timer_index]).hour + 1) % 24;
-      }
-      else {
+      } else {
         (Timers[timer_index]).minute = ((Timers[timer_index]).minute + 1) % 60;
       }
     }
@@ -532,12 +516,10 @@ void timers_screen_input() {
     if ((timers_menu_index % PAGE_PER_TIMER) == 2) {
 
       if (cursor_index == 0) {
-        (Timers[timer_index]).duration = ((Timers[timer_index]).duration + (60*60)) % MAX_DURATION;
-      }
-      else if (cursor_index == 1) {
+        (Timers[timer_index]).duration = ((Timers[timer_index]).duration + (60 * 60)) % MAX_DURATION;
+      } else if (cursor_index == 1) {
         (Timers[timer_index]).duration = ((Timers[timer_index]).duration + 60) % MAX_DURATION;
-      }
-      else {
+      } else {
         (Timers[timer_index]).duration = ((Timers[timer_index]).duration + 1) % MAX_DURATION;
       }
     }
@@ -563,16 +545,13 @@ void timers_screen_input() {
         if ((Timers[timer_index]).hour > 0) {
 
           (Timers[timer_index]).hour = (Timers[timer_index]).hour - 1;
-        }
-        else {
+        } else {
           (Timers[timer_index]).hour = 23;
         }
-      }
-      else {
+      } else {
         if ((Timers[timer_index]).minute > 0) {
           (Timers[timer_index]).minute = (Timers[timer_index]).minute - 1;
-        }
-        else {
+        } else {
           (Timers[timer_index]).minute = 59;
         }
       }
@@ -587,13 +566,11 @@ void timers_screen_input() {
     // Timer duration screen
     if ((timers_menu_index % PAGE_PER_TIMER) == 2) {
 
-      if (cursor_index == 0 && (Timers[timer_index]).duration >= (60*60)) {
-        (Timers[timer_index]).duration = ((Timers[timer_index]).duration - (60*60)) ;
-      }
-      else if (cursor_index == 1 && (Timers[timer_index]).duration > (60)) {
+      if (cursor_index == 0 && (Timers[timer_index]).duration >= (60 * 60)) {
+        (Timers[timer_index]).duration = ((Timers[timer_index]).duration - (60 * 60));
+      } else if (cursor_index == 1 && (Timers[timer_index]).duration > (60)) {
         (Timers[timer_index]).duration = ((Timers[timer_index]).duration - 60);
-      }
-      else if (cursor_index == 2 && (Timers[timer_index]).duration >= 1) {
+      } else if (cursor_index == 2 && (Timers[timer_index]).duration >= 1) {
         (Timers[timer_index]).duration = ((Timers[timer_index]).duration - 1);
       }
     }
@@ -734,7 +711,7 @@ void loop() {
     if (main_menu_mode) {
       main_menu_screen();
       main_menu_screen_input();
-    
+
     } else if (time_set_mode) {
       change_time_screen();
       change_time_screen_input();
@@ -745,8 +722,7 @@ void loop() {
       timers_screen_input();
     }
     delay(MENU_MODE_TICK);
-  }
-  else {
+  } else {
 
     // to apply changes to time if any
     if (update_RTC_time) {
