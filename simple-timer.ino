@@ -3,27 +3,43 @@
 #include <EEPROM.h>
 #include <RTClib.h>
 
-// constant ----------------------------------------------------------------------------------------------------
+// Constants ----------------------------------------------------------------------------------------------------
+
 #define TIMERS_COUNT 8 // max is 8 (due to menu restriction)
 #define RELAYS_COUNT 8  // max is 8 (due to menu restriction and Timer datatype restriction)
 
-// Relays pins (change them to correspond with your setup)
-#define RELAY_1 A0
-#define RELAY_2 A1
-#define RELAY_3 A2
-#define RELAY_4 A3
-#define RELAY_5 A4
-#define RELAY_6 A5
-#define RELAY_7 10
-#define RELAY_8 11
+// Relay DataType
+typedef struct Relay {
+  byte on_state;   // HIGH or LOW
+  byte pin;        // pin number
+};
 
-const byte RelaysPins[8] = {RELAY_1, RELAY_2, RELAY_3, RELAY_4, RELAY_5, RELAY_6, RELAY_7, RELAY_8};
+// Change pin and on_state to correspond with your setup)
+const Relay RELAY_1 = {on_state: LOW, pin: A0};
+const Relay RELAY_2 = {on_state: LOW, pin: A1};
+const Relay RELAY_3 = {on_state: LOW, pin: A2};
+const Relay RELAY_4 = {on_state: LOW, pin: A3};
+const Relay RELAY_5 = {on_state: LOW, pin: 13};
+const Relay RELAY_6 = {on_state: LOW, pin: 12};
+const Relay RELAY_7 = {on_state: LOW, pin: 11};
+const Relay RELAY_8 = {on_state: LOW, pin: 10};
 
-const int RelayDelayTime = 0;
+
+const Relay RELAYS[8] = {RELAY_1, RELAY_2, RELAY_3, RELAY_4, RELAY_5, RELAY_6, RELAY_7, RELAY_8};
+
+// Buttons pins
+const byte SELECT_PIN = 0;  // Pin number 2 on the Arduino Uno, INT0
+const byte CURSER_PIN = 1;  // Pin number 2 on the Arduino Uno, INT2
+const byte UP_PIN = 4;      // Pin number 4 on the Arduino Uno, INT2
+const byte DOWN_PIN = 5;    // Pin number 5 on the Arduino Uno, INT2
+
+
 
 const int INPUT_TICK = 300;
 const int MENU_MODE_TICK = 150;
 const int NORMAL_MODE_TICK = 1000;
+
+const byte PAGE_PER_TIMER = 4; 
 
 // RTC setup
 RTC_DS1307 RTC;
@@ -43,15 +59,6 @@ const String time_units[3] = {"sec", "min", "hour"};
 // Relays in binary
 const byte Relays[8] = {B00000001, B00000010, B00000100, B00001000, B00010000, B00100000, B01000000, B10000000};
 
-// SubMenu
-const byte SubMenuPin = 1;       // interrupt pin
-
-const byte SubMenuUpPin = 4;     //   SubMenu Buttons Pins
-const byte SubMenuDownPin = 5;   //
-
-// Menu
-const byte MenuPin = 0;   //interrupt pin
-const byte MaxNoMenu = 4; // max No. of pages per timer
 
 //------------------------------------------------------------------------------------------------------------------
 
@@ -62,23 +69,21 @@ uint32_t RelaysCloseTime[RELAYS_COUNT];  // to keep track of ralays close time
 boolean RelaysStates[RELAYS_COUNT];      // to keep track of running relays
 
 // Menu
-boolean MenuMode = false;
-boolean MainMenuMode = false;
-byte MainMenuPos = 0;
-byte MenuPos = 0;  // menu postion
-boolean NewMenu = false;  // used for lcd clearing
-byte NoMenu = 0; 
+boolean main_menu_mode = false;
+byte main_menu_index = 0;
+boolean timers_menu_mode = false;
+byte timers_menu_index = 0; 
+byte timers_menu_subindex = 0; 
+boolean refresh_LCD = false;
 
 
-boolean TimeSetMode = false;
-DateTime TempTime;
-boolean SetTime = false;
+boolean time_set_mode = false;
+DateTime temp_time;
+boolean update_RTC_time = false;
 
 long lastMillis = 0; // used for interrupt
 
-
-// SubMenu
-byte SubMenuPos = 0;  // SubMenu Postion
+byte cursor_index = 0;  // SubMenu Postion
 
 // Timers
 boolean UpdateTimers = false;      // tells weather or not the timers were modified
@@ -102,6 +107,18 @@ Timer* Timers = (Timer*) malloc(sizeof(Timer) * TIMERS_COUNT);
 
 //-----------------------------------------------------------------------------------------------------------
 
+
+void relay_on(Relay r) {
+    digitalWrite(r.pin, r.on_state);
+}
+void relay_off(Relay r) {
+  if (r.on_state == HIGH) {
+    digitalWrite(r.pin, LOW);
+  }
+  else {
+    digitalWrite(r.pin, HIGH);
+  }
+}
 
 // gets the timers from the EEPROM
 void getTimers() {
@@ -133,53 +150,53 @@ void UpdateTimersEEPROM() {
 
   for (int i = 0; i < TIMERS_COUNT; i++) {
     // hour
-    EEPROM.write(i * 6, (Timers[i]).hour);
+    EEPROM.update(i * 6, (Timers[i]).hour);
 
     // minute
-    EEPROM.write(i * 6 + 1, (Timers[i]).minute);
+    EEPROM.update(i * 6 + 1, (Timers[i]).minute);
 
     // days
-    EEPROM.write(i * 6 + 2, (Timers[i]).days);
+    EEPROM.update(i * 6 + 2, (Timers[i]).days);
 
     // duration
-    EEPROM.write(i * 6 + 3, (Timers[i]).duration);
+    EEPROM.update(i * 6 + 3, (Timers[i]).duration);
 
     // dunit
-    EEPROM.write(i * 6 + 4, (Timers[i]).dunit);
+    EEPROM.update(i * 6 + 4, (Timers[i]).dunit);
 
     // relays
-    EEPROM.write(i * 6 + 5, (Timers[i]).relays);
+    EEPROM.update(i * 6 + 5, (Timers[i]).relays);
 
   }
 }
 
 
-void ResetTimer(byte Timer_no) {
+void ResetTimer(byte timer_index) {
   
-  (Timers[Timer_no]).hour = 0;
-  (Timers[Timer_no]).minute = 0;
-  (Timers[Timer_no]).days = B00000000;
-  (Timers[Timer_no]).duration = 0;
-  (Timers[Timer_no]).dunit = 0;
-  (Timers[Timer_no]).relays = B00000000;
+  (Timers[timer_index]).hour = 0;
+  (Timers[timer_index]).minute = 0;
+  (Timers[timer_index]).days = B00000000;
+  (Timers[timer_index]).duration = 0;
+  (Timers[timer_index]).dunit = 0;
+  (Timers[timer_index]).relays = B00000000;
 
   // hour
-  EEPROM.write(Timer_no * 6, (Timers[Timer_no]).hour);
+  EEPROM.write(timer_index * 6, (Timers[timer_index]).hour);
 
   // minute
-  EEPROM.write(Timer_no * 6 + 1, (Timers[Timer_no]).minute);
+  EEPROM.write(timer_index * 6 + 1, (Timers[timer_index]).minute);
 
   // days
-  EEPROM.write(Timer_no * 6 + 2, (Timers[Timer_no]).days);
+  EEPROM.write(timer_index * 6 + 2, (Timers[timer_index]).days);
 
   // duration
-  EEPROM.write(Timer_no * 6 + 3, (Timers[Timer_no]).duration);
+  EEPROM.write(timer_index * 6 + 3, (Timers[timer_index]).duration);
 
   // dunit
-  EEPROM.write(Timer_no * 6 + 4, (Timers[Timer_no]).dunit);
+  EEPROM.write(timer_index * 6 + 4, (Timers[timer_index]).dunit);
 
   // relays
-  EEPROM.write(Timer_no * 6 + 5, (Timers[Timer_no]).relays);
+  EEPROM.write(timer_index * 6 + 5, (Timers[timer_index]).relays);
 
 }
 
@@ -190,53 +207,55 @@ void Menu() {
   if ((millis() - lastMillis) > INPUT_TICK) {
 
 
-    // if in Normal mode
-    if (MenuMode == false) {
-      MenuMode = true;
-      MainMenuMode = true;
-    }
-    // if in MainMenu
-    else if (MainMenuMode) {
+
+
+    if (main_menu_mode) {
 
       // select timer page
-      if (MainMenuPos == 0) {
-        MainMenuMode = false;
-        MenuPos = SubMenuPos * 4;
+      if (main_menu_index == 0) {
+        main_menu_mode = false;
+        timers_menu_index = cursor_index * 4;
       }
       // Set Date/Time page
-      else if (MainMenuPos == 1) {
-        if (SubMenuPos == 1) {
-          TimeSetMode = true;
-          MainMenuMode = false;
+      else if (main_menu_index == 1) {
+        if (cursor_index == 1) {
+          time_set_mode = true;
+          main_menu_mode = false;
         }
         else {
-          MenuMode = false;
-          MainMenuMode = false;
+          timers_menu_mode = false;
+          main_menu_mode = false;
         }
       }
       // Rest Timer Page
-      else if (MainMenuPos == 2) {
-        ResetTimer(SubMenuPos);
-        MenuMode = false;
-        MainMenuMode = false;
+      else if (main_menu_index == 2) {
+        ResetTimer(cursor_index);
+        timers_menu_mode = false;
+        main_menu_mode = false;
       }
-      MainMenuPos = 0;
+      main_menu_index = 0;
 
     }
-    // if in TimeSetMode
-    else if (TimeSetMode) {
-      TimeSetMode = false;
-      MenuMode = false;
+
+    else if (time_set_mode) {
+      time_set_mode = false;
+      timers_menu_mode = false;
     }
 
+    else if (timers_menu_mode) {
+      timers_menu_index++;
+      timers_menu_subindex++;
+    }
+    
+    // In Normal mode
     else {
-      MenuPos++;
-      NoMenu++;
+      timers_menu_mode = true;
+      main_menu_mode = true;
     }
 
-    SubMenuPos = 0;
+    cursor_index = 0;
     lastMillis = millis();
-    NewMenu = true;
+    refresh_LCD = true;
 
   }
 }
@@ -245,11 +264,13 @@ void SubMenu() {
 
   // adding delay between interrupts
   if ((millis() - lastMillis) > INPUT_TICK) {
-    SubMenuPos++;
+    cursor_index++;
     lastMillis = millis();
   }
 
 }
+
+
 void PrintTime(int hour, int min, int sec = -1) {
   if (hour < 10) {
     lcd.print("0");
@@ -268,12 +289,12 @@ void PrintTime(int hour, int min, int sec = -1) {
     lcd.print(sec);
   }
 }
-void ShowMainMenu() {
-  if (NewMenu) {
+void main_menu_screen() {
+  if (refresh_LCD) {
     lcd.clear();
-    NewMenu = false;
+    refresh_LCD = false;
   }
-  if (MainMenuPos == 0) {
+  if (main_menu_index == 0) {
     lcd.setCursor(0, 0);
     lcd.print("Edit Timer:");
 
@@ -284,23 +305,23 @@ void ShowMainMenu() {
       lcd.print(" ");
     }
 
-    if (SubMenuPos >= TIMERS_COUNT) {
-      SubMenuPos = 0;
+    if (cursor_index >= TIMERS_COUNT) {
+      cursor_index = 0;
     }
-    lcd.setCursor(SubMenuPos * 2, 1);
+    lcd.setCursor(cursor_index * 2, 1);
     lcd.cursor();
   }
-  else if (MainMenuPos == 1) {
+  else if (main_menu_index == 1) {
     lcd.setCursor(0, 0);
     lcd.print("Set Date/Time? :");
 
     lcd.setCursor(4, 1);
 
     lcd.print("No  Yes");
-    if (SubMenuPos >= 2) {
-      SubMenuPos = 0;
+    if (cursor_index >= 2) {
+      cursor_index = 0;
     }
-    lcd.setCursor(SubMenuPos * 4 + 5, 1);
+    lcd.setCursor(cursor_index * 4 + 5, 1);
     lcd.cursor();
 
 
@@ -316,131 +337,131 @@ void ShowMainMenu() {
       lcd.print(" ");
     }
 
-    if (SubMenuPos >= TIMERS_COUNT) {
-      SubMenuPos = 0;
+    if (cursor_index >= TIMERS_COUNT) {
+      cursor_index = 0;
     }
-    lcd.setCursor(SubMenuPos * 2, 1);
+    lcd.setCursor(cursor_index * 2, 1);
     lcd.cursor();
 
   }
 
 }
 
-void ShowTimeSet() {
-  if (NewMenu) {
+void change_time_screen() {
+  if (refresh_LCD) {
     lcd.clear();
-    NewMenu = false;
+    refresh_LCD = false;
 
   }
 
-  ShowDateTime(TempTime);
+  print_data_time(temp_time);
 
-  if (SubMenuPos > 5) {
-    SubMenuPos = 0;
+  if (cursor_index > 5) {
+    cursor_index = 0;
   }
 
-  if (SubMenuPos < 3) {
-    lcd.setCursor((SubMenuPos % 3) * 3 + 9, 0);
+  if (cursor_index < 3) {
+    lcd.setCursor((cursor_index % 3) * 3 + 9, 0);
   } else {
-    lcd.setCursor((SubMenuPos % 3) * 3 + 7, 1);
+    lcd.setCursor((cursor_index % 3) * 3 + 7, 1);
   }
   lcd.cursor();
 }
 
 
-void HandleTimeSetInput() {
+void change_time_screen_input() {
   //SubMenuUp
-  if (digitalRead(SubMenuUpPin) == HIGH) {
-    NewMenu = true;
-    SetTime = true;
-    if (SubMenuPos == 0) {
-      TempTime = TempTime + TimeSpan(366, 0, 0, 0);
+  if (digitalRead(UP_PIN) == HIGH) {
+    refresh_LCD = true;
+    update_RTC_time = true;
+    if (cursor_index == 0) {
+      temp_time = temp_time + TimeSpan(366, 0, 0, 0);
     }
-    if (SubMenuPos == 1) {
-      TempTime = TempTime + TimeSpan(31, 0, 0, 0);
+    if (cursor_index == 1) {
+      temp_time = temp_time + TimeSpan(31, 0, 0, 0);
     }
-    if (SubMenuPos == 2) {
-      TempTime = TempTime + TimeSpan(1, 0, 0, 0);
+    if (cursor_index == 2) {
+      temp_time = temp_time + TimeSpan(1, 0, 0, 0);
     }
-    if (SubMenuPos == 3) {
-      TempTime = TempTime + TimeSpan(0, 1, 0, 0);
+    if (cursor_index == 3) {
+      temp_time = temp_time + TimeSpan(0, 1, 0, 0);
     }
-    if (SubMenuPos == 4) {
-      TempTime = TempTime + TimeSpan(0, 0, 1, 0);
+    if (cursor_index == 4) {
+      temp_time = temp_time + TimeSpan(0, 0, 1, 0);
     }
-    if (SubMenuPos == 5) {
-      TempTime = TempTime + TimeSpan(0, 0, 0, 1);
+    if (cursor_index == 5) {
+      temp_time = temp_time + TimeSpan(0, 0, 0, 1);
     }
 
   }
   //SubMenuDown
-  if (digitalRead(SubMenuDownPin) == HIGH) {
-    SetTime = true;
-    NewMenu = true;
-    if (SubMenuPos == 0) {
-      TempTime = TempTime - TimeSpan(366, 0, 0, 0);
+  if (digitalRead(DOWN_PIN) == HIGH) {
+    update_RTC_time = true;
+    refresh_LCD = true;
+    if (cursor_index == 0) {
+      temp_time = temp_time - TimeSpan(366, 0, 0, 0);
     }
-    if (SubMenuPos == 1) {
-      TempTime = TempTime - TimeSpan(31, 0, 0, 0);
+    if (cursor_index == 1) {
+      temp_time = temp_time - TimeSpan(31, 0, 0, 0);
     }
-    if (SubMenuPos == 2) {
-      TempTime = TempTime - TimeSpan(1, 0, 0, 0);
+    if (cursor_index == 2) {
+      temp_time = temp_time - TimeSpan(1, 0, 0, 0);
     }
-    if (SubMenuPos == 3) {
-      TempTime = TempTime - TimeSpan(0, 1, 0, 0);
+    if (cursor_index == 3) {
+      temp_time = temp_time - TimeSpan(0, 1, 0, 0);
     }
-    if (SubMenuPos == 4) {
-      TempTime = TempTime - TimeSpan(0, 0, 1, 0);
+    if (cursor_index == 4) {
+      temp_time = temp_time - TimeSpan(0, 0, 1, 0);
     }
-    if (SubMenuPos == 5) {
-      TempTime = TempTime - TimeSpan(0, 0, 0, 1);
+    if (cursor_index == 5) {
+      temp_time = temp_time - TimeSpan(0, 0, 0, 1);
     }
   }
 
 }
 
 
-void HandleMenuInput() {
+void main_menu_screen_input() {
   //SubMenuUp
-  if (digitalRead(SubMenuUpPin) == HIGH) {
-    SubMenuPos = 0;
-    NewMenu = true;
-    MainMenuPos = (MainMenuPos + 1) % 3;
+  if (digitalRead(UP_PIN) == HIGH) {
+    cursor_index = 0;
+    refresh_LCD = true;
+    main_menu_index = (main_menu_index + 1) % 3;
   }
   //SubMenuDown
-  if (digitalRead(SubMenuDownPin) == HIGH) {
-    SubMenuPos = 0;
-    NewMenu = true;
-    if (MainMenuPos == 0) {
-      MainMenuPos = 2;
-    } else MainMenuPos--;
+  if (digitalRead(DOWN_PIN) == HIGH) {
+    cursor_index = 0;
+    refresh_LCD = true;
+    if (main_menu_index == 0) {
+      main_menu_index = 2;
+    } else main_menu_index--;
   }
 
 }
 
 
-void ShowMenu() {
+void timers_screen() {
 
-  if (NoMenu >= MaxNoMenu) {
-    MenuMode = false;
-    NoMenu = 0;
-
+  if (timers_menu_subindex >= PAGE_PER_TIMER) {
+    timers_menu_mode = false;
+    timers_menu_subindex = 0;
   }
+  
   else {
     // to clear only once every new menu
-    if (NewMenu) {
+    if (refresh_LCD) {
       lcd.clear();
-      NewMenu = false;
+      refresh_LCD = false;
     }
 
     // getting timer number from the menu pos
-    byte Timer_no = (MenuPos / MaxNoMenu);
-    byte Display_Number =  (MenuPos / MaxNoMenu) + 1;
+    byte timer_index = (timers_menu_index / PAGE_PER_TIMER);
+    byte Display_Number =  (timers_menu_index / PAGE_PER_TIMER) + 1;
 
     lcd.cursor();
 
     // Timer time screen
-    if ((MenuPos % MaxNoMenu) == 0) {
+    if ((timers_menu_index % PAGE_PER_TIMER) == 0) {
       lcd.setCursor(0, 0);
       lcd.print("Timer");
       lcd.print(Display_Number);
@@ -448,16 +469,16 @@ void ShowMenu() {
 
       lcd.setCursor(0, 1);
 
-      PrintTime((Timers[Timer_no]).hour, (Timers[Timer_no]).minute);
+      PrintTime((Timers[timer_index]).hour, (Timers[timer_index]).minute);
 
-      if (SubMenuPos > 1) {
-        SubMenuPos = 0;
+      if (cursor_index > 1) {
+        cursor_index = 0;
       }
-      lcd.setCursor((SubMenuPos * 3 + 1), 1);
+      lcd.setCursor((cursor_index * 3 + 1), 1);
     }
 
     // Timer days screen
-    if ((MenuPos % MaxNoMenu) == 1) {
+    if ((timers_menu_index % PAGE_PER_TIMER) == 1) {
       lcd.setCursor(0, 0);
 
       lcd.print("Timer");
@@ -468,22 +489,22 @@ void ShowMenu() {
 
       for (int i = 0; i < 7; i++) {
         lcd.print(weekdays_symbols[i]);
-        if (weekdays[i] & (Timers[Timer_no]).days) {
+        if (weekdays[i] & (Timers[timer_index]).days) {
           lcd.print("*");
         }
         else {
           lcd.print(" ");
         }
       }
-      if (SubMenuPos > 6) {
-        SubMenuPos = 0;
+      if (cursor_index > 6) {
+        cursor_index = 0;
       }
-      lcd.setCursor(SubMenuPos * 2, 1);
+      lcd.setCursor(cursor_index * 2, 1);
 
     }
 
     // Timer duration screen
-    if ((MenuPos % MaxNoMenu) == 2) {
+    if ((timers_menu_index % PAGE_PER_TIMER) == 2) {
 
       lcd.setCursor(0, 0);
 
@@ -493,19 +514,19 @@ void ShowMenu() {
 
       lcd.setCursor(0, 1);
 
-      lcd.print((Timers[Timer_no]).duration);
+      lcd.print((Timers[timer_index]).duration);
       lcd.print(" ");
-      lcd.print(time_units[(Timers[Timer_no]).dunit]);
+      lcd.print(time_units[(Timers[timer_index]).dunit]);
 
-      if (SubMenuPos > 1) {
-        SubMenuPos = 0;
+      if (cursor_index > 1) {
+        cursor_index = 0;
       }
-      lcd.setCursor((SubMenuPos * 3), 1);
+      lcd.setCursor((cursor_index * 3), 1);
 
     }
 
     // Timer relays screen
-    if ((MenuPos % MaxNoMenu) == 3) {
+    if ((timers_menu_index % PAGE_PER_TIMER) == 3) {
       lcd.setCursor(0, 0);
       lcd.print("Timer");
       lcd.print(Display_Number);
@@ -515,130 +536,130 @@ void ShowMenu() {
 
       for (int i = 0; i < RELAYS_COUNT; i++) {
         lcd.print(i + 1);
-        if (Relays[i] & (Timers[Timer_no]).relays) {
+        if (Relays[i] & (Timers[timer_index]).relays) {
           lcd.print("*");
         } else {
           lcd.print(" ");
         }
       }
-      if (SubMenuPos >= RELAYS_COUNT) {
-        SubMenuPos = 0;
+      if (cursor_index >= RELAYS_COUNT) {
+        cursor_index = 0;
       }
-      lcd.setCursor(SubMenuPos * 2, 1);
+      lcd.setCursor(cursor_index * 2, 1);
     }
   }
 }
 
 
-void HandleTimerInput() {
+void timers_screen_input() {
 
   //SubMenuUp
-  if (digitalRead(SubMenuUpPin) == HIGH) {
-    NewMenu = true;
+  if (digitalRead(UP_PIN) == HIGH) {
+    refresh_LCD = true;
 
     UpdateTimers = true;
     // getting timer number from the menu pos
-    byte Timer_no = (MenuPos / MaxNoMenu);
+    byte timer_index = (timers_menu_index / PAGE_PER_TIMER);
 
     // Timer Time screen
-    if ((MenuPos % MaxNoMenu) == 0) {
-      if (SubMenuPos == 0) {
-        (Timers[Timer_no]).hour = ((Timers[Timer_no]).hour + 1) % 24;
+    if ((timers_menu_index % PAGE_PER_TIMER) == 0) {
+      if (cursor_index == 0) {
+        (Timers[timer_index]).hour = ((Timers[timer_index]).hour + 1) % 24;
       }
       else {
-        (Timers[Timer_no]).minute = ((Timers[Timer_no]).minute + 1) % 60;
+        (Timers[timer_index]).minute = ((Timers[timer_index]).minute + 1) % 60;
       }
     }
 
     // Timer days screen
-    if ((MenuPos % MaxNoMenu) == 1) {
+    if ((timers_menu_index % PAGE_PER_TIMER) == 1) {
 
-      (Timers[Timer_no]).days = (Timers[Timer_no]).days ^ weekdays[SubMenuPos];
+      (Timers[timer_index]).days = (Timers[timer_index]).days ^ weekdays[cursor_index];
     }
 
     // Timer duration screen
-    if ((MenuPos % MaxNoMenu) == 2) {
+    if ((timers_menu_index % PAGE_PER_TIMER) == 2) {
 
-      if (SubMenuPos == 0) {
+      if (cursor_index == 0) {
 
-        (Timers[Timer_no]).duration = ((Timers[Timer_no]).duration + 1) % 256;
+        (Timers[timer_index]).duration = ((Timers[timer_index]).duration + 1) % 256;
       }
       else {
 
-        (Timers[Timer_no]).dunit = ((Timers[Timer_no]).dunit + 1) % 3;
+        (Timers[timer_index]).dunit = ((Timers[timer_index]).dunit + 1) % 3;
       }
     }
     // Timer relays screen
-    if ((MenuPos % MaxNoMenu) == 3) {
-      (Timers[Timer_no]).relays = (Timers[Timer_no]).relays ^ Relays[SubMenuPos];
+    if ((timers_menu_index % PAGE_PER_TIMER) == 3) {
+      (Timers[timer_index]).relays = (Timers[timer_index]).relays ^ Relays[cursor_index];
     }
   }
   //SubMenuDown
-  if (digitalRead(SubMenuDownPin) == HIGH) {
-    NewMenu = true;
+  if (digitalRead(DOWN_PIN) == HIGH) {
+    refresh_LCD = true;
 
     UpdateTimers = true;
 
     // getting timer number from the menu pos
-    byte Timer_no = (MenuPos / MaxNoMenu);
+    byte timer_index = (timers_menu_index / PAGE_PER_TIMER);
 
     // Timer Time screen
-    if ((MenuPos % MaxNoMenu) == 0) {
+    if ((timers_menu_index % PAGE_PER_TIMER) == 0) {
 
-      if (SubMenuPos == 0) {
+      if (cursor_index == 0) {
 
-        if ((Timers[Timer_no]).hour > 0) {
+        if ((Timers[timer_index]).hour > 0) {
 
-          (Timers[Timer_no]).hour = (Timers[Timer_no]).hour - 1;
+          (Timers[timer_index]).hour = (Timers[timer_index]).hour - 1;
         }
         else {
-          (Timers[Timer_no]).hour = 23;
+          (Timers[timer_index]).hour = 23;
         }
       }
       else {
-        if ((Timers[Timer_no]).minute > 0) {
-          (Timers[Timer_no]).minute = (Timers[Timer_no]).minute - 1;
+        if ((Timers[timer_index]).minute > 0) {
+          (Timers[timer_index]).minute = (Timers[timer_index]).minute - 1;
         }
         else {
-          (Timers[Timer_no]).minute = 59;
+          (Timers[timer_index]).minute = 59;
         }
       }
     }
 
     // Timer days screen
-    if ((MenuPos % MaxNoMenu) == 1) {
+    if ((timers_menu_index % PAGE_PER_TIMER) == 1) {
 
-      (Timers[Timer_no]).days = (Timers[Timer_no]).days ^ weekdays[SubMenuPos];
+      (Timers[timer_index]).days = (Timers[timer_index]).days ^ weekdays[cursor_index];
     }
 
     // Timer duration screen
-    if ((MenuPos % MaxNoMenu) == 2) {
+    if ((timers_menu_index % PAGE_PER_TIMER) == 2) {
 
-      if (SubMenuPos == 0) {
-        if ((Timers[Timer_no]).duration > 0) {
-          (Timers[Timer_no]).duration--;
+      if (cursor_index == 0) {
+        if ((Timers[timer_index]).duration > 0) {
+          (Timers[timer_index]).duration--;
         }
       }
       else {
-        if ((Timers[Timer_no]).dunit > 0) {
-          (Timers[Timer_no]).dunit--;
+        if ((Timers[timer_index]).dunit > 0) {
+          (Timers[timer_index]).dunit--;
         }
       }
     }
     // Timer relays screen
-    if ((MenuPos % MaxNoMenu) == 3) {
-      (Timers[Timer_no]).relays = (Timers[Timer_no]).relays ^ Relays[SubMenuPos];
+    if ((timers_menu_index % PAGE_PER_TIMER) == 3) {
+      (Timers[timer_index]).relays = (Timers[timer_index]).relays ^ Relays[cursor_index];
     }
   }
 }
 
 
-void ShowDateTime(DateTime now) {
+void print_data_time(DateTime now) {
 
   lcd.noCursor();
-  if (NewMenu) {
+  if (refresh_LCD) {
     lcd.clear();
-    NewMenu = false;
+    refresh_LCD = false;
   }
 
   // Showing Date
@@ -707,8 +728,7 @@ void should_run(DateTime now) {
               RelaysCloseTime[j] = (now.unixtime() + dur);
             }
 
-            digitalWrite(RelaysPins[j], LOW);
-            delay(RelayDelayTime);
+            relay_on(RELAYS[j]);
           }
         }
       }
@@ -718,13 +738,11 @@ void should_run(DateTime now) {
 
 
 void should_stop(DateTime now) {
-
   for (int i = 0; i < RELAYS_COUNT; i++) {
     if (RelaysStates[i]) {
       if (now.unixtime() >= RelaysCloseTime[i]) {
-        digitalWrite(RelaysPins[i], HIGH);
+        relay_off(RELAYS[i]);
         RelaysStates[i] = false;
-        delay(RelayDelayTime);
       }
     }
   }
@@ -739,17 +757,17 @@ void setup() {
   lcd.backlight();
 
   // Menu button
-  attachInterrupt(MenuPin, Menu, RISING);
+  attachInterrupt(SELECT_PIN, Menu, RISING);
 
   //SubMenu buttons
-  attachInterrupt(SubMenuPin, SubMenu, RISING);
-  pinMode(SubMenuUpPin, INPUT);
-  pinMode(SubMenuDownPin, INPUT);
+  attachInterrupt(CURSER_PIN, SubMenu, RISING);
+  pinMode(UP_PIN, INPUT);
+  pinMode(DOWN_PIN, INPUT);
 
   // Relays initializing
   for (int i = 0; i < RELAYS_COUNT; i++) {
-    pinMode(RelaysPins[i], OUTPUT);
-    digitalWrite(RelaysPins[i], HIGH);
+    pinMode(RELAYS[i].pin, OUTPUT);
+    relay_off(RELAYS[i]);
   }
   for (int i = 0; i < RELAYS_COUNT; i++) {
     RelaysStates[i] = false;
@@ -768,31 +786,28 @@ void setup() {
 
 void loop() {
 
-  if (MenuMode) {
-
-    if (MainMenuMode) {
-      ShowMainMenu();
-      HandleMenuInput();
-      
-    } else if (TimeSetMode) {
-
-      ShowTimeSet();
-      HandleTimeSetInput();
-
+  if (timers_menu_mode) {
+    if (main_menu_mode) {
+      main_menu_screen();
+      main_menu_screen_input();
+    
+    } else if (time_set_mode) {
+      change_time_screen();
+      change_time_screen_input();
     }
     // Timer edit pages
     else {
-      ShowMenu();
-      HandleTimerInput();
+      timers_screen();
+      timers_screen_input();
     }
     delay(MENU_MODE_TICK);
   }
   else {
 
     // to apply changes to time if any
-    if (SetTime) {
-      SetTime = false;
-      RTC.adjust(TempTime);
+    if (update_RTC_time) {
+      update_RTC_time = false;
+      RTC.adjust(temp_time);
     }
     // to apply changes to timers if any
     if (UpdateTimers) {
@@ -801,9 +816,9 @@ void loop() {
     }
 
     DateTime now = RTC.now();
-    TempTime = RTC.now();
+    temp_time = RTC.now();
 
-    ShowDateTime(now);
+    print_data_time(now);
 
     // Checking all Timers that should run
     should_run(now);
