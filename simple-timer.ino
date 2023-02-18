@@ -85,10 +85,10 @@ boolean update_RTC_time = false;
 
 long lastMillis = 0;  // used for interrupt
 
-byte cursor_index = 0;  // SubMenu Postion
+byte cursor_index = 0;  // Cursor index
 
 // Timers
-boolean UpdateTimers = false;        // tells weather or not the timers were modified
+boolean update_timers = false;       // tells weather or not the timers were modified
 boolean ActiveTimers[TIMERS_COUNT];  // keeps track of active timer in a given minute (not to check them again in the same minute)
 byte lastMin;                        // to keep track of the last minute to reset ActiveTimers
 
@@ -121,7 +121,7 @@ void relay_off(Relay r) {
 }
 
 // gets the timers from the EEPROM
-void getTimers() {
+void load_timers() {
   for (int i = 0; i < TIMERS_COUNT; i++) {
     int eeAddress = sizeof(Timer) * i;  //EEPROM address to start reading from
     EEPROM.get(eeAddress, Timers[i]);
@@ -129,7 +129,7 @@ void getTimers() {
 }
 
 // update the current timers to EEPROM
-void UpdateTimersEEPROM() {
+void save_timers() {
   for (int i = 0; i < TIMERS_COUNT; i++) {
     int eeAddress = sizeof(Timer) * i;  //EEPROM address to start reading from
     EEPROM.put(eeAddress, Timers[i]);
@@ -154,9 +154,6 @@ void Menu() {
 
   // adding delay between interrupts
   if ((millis() - lastMillis) > INPUT_TICK) {
-
-
-
 
     if (main_menu_mode) {
 
@@ -207,7 +204,7 @@ void Menu() {
   }
 }
 
-void SubMenu() {
+void Cursor() {
 
   // adding delay between interrupts
   if ((millis() - lastMillis) > INPUT_TICK) {
@@ -311,7 +308,7 @@ void change_time_screen() {
 
 
 void change_time_screen_input() {
-  //SubMenuUp
+  // Button down
   if (digitalRead(UP_PIN) == HIGH) {
     refresh_LCD = true;
     update_RTC_time = true;
@@ -334,7 +331,7 @@ void change_time_screen_input() {
       temp_time = temp_time + TimeSpan(0, 0, 0, 1);
     }
   }
-  //SubMenuDown
+  // Button up
   if (digitalRead(DOWN_PIN) == HIGH) {
     update_RTC_time = true;
     refresh_LCD = true;
@@ -361,13 +358,13 @@ void change_time_screen_input() {
 
 
 void main_menu_screen_input() {
-  //SubMenuUp
+  // Button down
   if (digitalRead(UP_PIN) == HIGH) {
     cursor_index = 0;
     refresh_LCD = true;
     main_menu_index = (main_menu_index + 1) % 3;
   }
-  //SubMenuDown
+  // Button up
   if (digitalRead(DOWN_PIN) == HIGH) {
     cursor_index = 0;
     refresh_LCD = true;
@@ -489,11 +486,11 @@ void timers_screen() {
 
 void timers_screen_input() {
 
-  //SubMenuUp
+  // Button down
   if (digitalRead(UP_PIN) == HIGH) {
     refresh_LCD = true;
 
-    UpdateTimers = true;
+    update_timers = true;
     // getting timer number from the menu pos
     byte timer_index = (timers_menu_index / PAGE_PER_TIMER);
 
@@ -528,11 +525,11 @@ void timers_screen_input() {
       (Timers[timer_index]).relays = (Timers[timer_index]).relays ^ Relays[cursor_index];
     }
   }
-  //SubMenuDown
+  // Button up
   if (digitalRead(DOWN_PIN) == HIGH) {
     refresh_LCD = true;
 
-    UpdateTimers = true;
+    update_timers = true;
 
     // getting timer number from the menu pos
     byte timer_index = (timers_menu_index / PAGE_PER_TIMER);
@@ -680,8 +677,10 @@ void setup() {
   // Menu button
   attachInterrupt(SELECT_PIN, Menu, RISING);
 
-  //SubMenu buttons
-  attachInterrupt(CURSER_PIN, SubMenu, RISING);
+  //Cursor button
+  attachInterrupt(CURSER_PIN, Cursor, RISING);
+
+  // Up & Down buttons
   pinMode(UP_PIN, INPUT);
   pinMode(DOWN_PIN, INPUT);
 
@@ -698,7 +697,7 @@ void setup() {
   }
 
   // Timers initializing
-  getTimers();  // loading timers for EEPROM
+  load_timers();  // loading timers for EEPROM
 
   for (int i = 0; i < TIMERS_COUNT; i++) {
     ActiveTimers[i] = false;
@@ -730,9 +729,9 @@ void loop() {
       RTC.adjust(temp_time);
     }
     // to apply changes to timers if any
-    if (UpdateTimers) {
-      UpdateTimers = false;
-      UpdateTimersEEPROM();
+    if (update_timers) {
+      update_timers = false;
+      save_timers();
     }
 
     DateTime now = RTC.now();
