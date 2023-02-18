@@ -2,11 +2,13 @@
 #include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
 #include <RTClib.h>
+#include <math.h>
 
 // Constants ----------------------------------------------------------------------------------------------------
 
 #define TIMERS_COUNT 8 // max is 8 (due to menu restriction)
 #define RELAYS_COUNT 8  // max is 8 (due to menu restriction and Timer datatype restriction)
+const uint32_t MAX_DURATION = 24UL * 60UL* 60UL;
 
 // Relay DataType
 typedef struct Relay {
@@ -96,8 +98,7 @@ typedef struct Timer {
   byte hour;       // the hour and
   byte minute;     //             the minute the timer will run on
   byte days;       // days the timer will run in
-  byte duration;   // duration of the timer in dunit
-  byte dunit;      // Duration unit (0 for sec, 1 for min, 2 for hour)
+  uint32_t duration;   // duration in seconds
   byte relays;     // the relays of the timer
 };
 
@@ -143,7 +144,6 @@ void ResetTimer(byte timer_index) {
   (Timers[timer_index]).minute = 0;
   (Timers[timer_index]).days = B00000000;
   (Timers[timer_index]).duration = 0;
-  (Timers[timer_index]).dunit = 0;
   (Timers[timer_index]).relays = B00000000;
   
   int eeAddress = sizeof(Timer) * timer_index; //EEPROM address to start reading from
@@ -464,14 +464,15 @@ void timers_screen() {
 
       lcd.setCursor(0, 1);
 
-      lcd.print((Timers[timer_index]).duration);
-      lcd.print(" ");
-      lcd.print(time_units[(Timers[timer_index]).dunit]);
+      const byte sec = round((Timers[timer_index]).duration%60);
+      const byte min = floor((Timers[timer_index]).duration/60%60);
+      const byte hour = floor((Timers[timer_index]).duration/60/60);
+      PrintTime(hour, min, sec);
 
-      if (cursor_index > 1) {
+      if (cursor_index > 2) {
         cursor_index = 0;
       }
-      lcd.setCursor((cursor_index * 3), 1);
+      lcd.setCursor((cursor_index * 3)+1, 1);
 
     }
 
@@ -531,12 +532,13 @@ void timers_screen_input() {
     if ((timers_menu_index % PAGE_PER_TIMER) == 2) {
 
       if (cursor_index == 0) {
-
-        (Timers[timer_index]).duration = ((Timers[timer_index]).duration + 1) % 256;
+        (Timers[timer_index]).duration = ((Timers[timer_index]).duration + (60*60)) % MAX_DURATION;
+      }
+      else if (cursor_index == 1) {
+        (Timers[timer_index]).duration = ((Timers[timer_index]).duration + 60) % MAX_DURATION;
       }
       else {
-
-        (Timers[timer_index]).dunit = ((Timers[timer_index]).dunit + 1) % 3;
+        (Timers[timer_index]).duration = ((Timers[timer_index]).duration + 1) % MAX_DURATION;
       }
     }
     // Timer relays screen
@@ -585,15 +587,14 @@ void timers_screen_input() {
     // Timer duration screen
     if ((timers_menu_index % PAGE_PER_TIMER) == 2) {
 
-      if (cursor_index == 0) {
-        if ((Timers[timer_index]).duration > 0) {
-          (Timers[timer_index]).duration--;
-        }
+      if (cursor_index == 0 && (Timers[timer_index]).duration >= (60*60)) {
+        (Timers[timer_index]).duration = ((Timers[timer_index]).duration - (60*60)) ;
       }
-      else {
-        if ((Timers[timer_index]).dunit > 0) {
-          (Timers[timer_index]).dunit--;
-        }
+      else if (cursor_index == 1 && (Timers[timer_index]).duration > (60)) {
+        (Timers[timer_index]).duration = ((Timers[timer_index]).duration - 60);
+      }
+      else if (cursor_index == 2 && (Timers[timer_index]).duration >= 1) {
+        (Timers[timer_index]).duration = ((Timers[timer_index]).duration - 1);
       }
     }
     // Timer relays screen
@@ -661,21 +662,14 @@ void should_run(DateTime now) {
         // set as ActiveTimer
         ActiveTimers[i] = true;
 
-        uint32_t dur = (Timers[i]).duration;
-
-        // converting duration into seconds
-        for (int k = (Timers[i]).dunit; k > 0; k--) {
-          dur = dur * 60;
-        }
-
         // see which relay that should be turned on
         for (int j = 0; j < RELAYS_COUNT; j++) {
           if ((Relays[j] & (Timers[i]).relays)) {
 
             RelaysStates[j] = true;
 
-            if ((now.unixtime() + dur) > RelaysCloseTime[j]) {
-              RelaysCloseTime[j] = (now.unixtime() + dur);
+            if ((now.unixtime() + (Timers[i]).duration) > RelaysCloseTime[j]) {
+              RelaysCloseTime[j] = (now.unixtime() + (Timers[i]).duration);
             }
 
             relay_on(RELAYS[j]);
