@@ -122,51 +122,17 @@ void relay_off(Relay r) {
 
 // gets the timers from the EEPROM
 void getTimers() {
-
   for (int i = 0; i < TIMERS_COUNT; i++) {
-    // hour
-    (Timers[i]).hour = EEPROM.read(i * 6);
-
-    // minute
-    (Timers[i]).minute = EEPROM.read(i * 6 + 1);
-
-    // days
-    (Timers[i]).days = EEPROM.read(i * 6 + 2);
-
-    // duration
-    (Timers[i]).duration = EEPROM.read(i * 6 + 3);
-
-    // dunit
-    (Timers[i]).dunit = EEPROM.read(i * 6 + 4);
-
-    // relays
-    (Timers[i]).relays = EEPROM.read(i * 6 + 5);
-
+    int eeAddress = sizeof(Timer) * i; //EEPROM address to start reading from
+    EEPROM.get( eeAddress, Timers[i] );
   }
 }
 
 // update the current timers to EEPROM
 void UpdateTimersEEPROM() {
-
   for (int i = 0; i < TIMERS_COUNT; i++) {
-    // hour
-    EEPROM.update(i * 6, (Timers[i]).hour);
-
-    // minute
-    EEPROM.update(i * 6 + 1, (Timers[i]).minute);
-
-    // days
-    EEPROM.update(i * 6 + 2, (Timers[i]).days);
-
-    // duration
-    EEPROM.update(i * 6 + 3, (Timers[i]).duration);
-
-    // dunit
-    EEPROM.update(i * 6 + 4, (Timers[i]).dunit);
-
-    // relays
-    EEPROM.update(i * 6 + 5, (Timers[i]).relays);
-
+    int eeAddress = sizeof(Timer) * i; //EEPROM address to start reading from
+    EEPROM.put(eeAddress, Timers[i]);
   }
 }
 
@@ -179,25 +145,9 @@ void ResetTimer(byte timer_index) {
   (Timers[timer_index]).duration = 0;
   (Timers[timer_index]).dunit = 0;
   (Timers[timer_index]).relays = B00000000;
-
-  // hour
-  EEPROM.write(timer_index * 6, (Timers[timer_index]).hour);
-
-  // minute
-  EEPROM.write(timer_index * 6 + 1, (Timers[timer_index]).minute);
-
-  // days
-  EEPROM.write(timer_index * 6 + 2, (Timers[timer_index]).days);
-
-  // duration
-  EEPROM.write(timer_index * 6 + 3, (Timers[timer_index]).duration);
-
-  // dunit
-  EEPROM.write(timer_index * 6 + 4, (Timers[timer_index]).dunit);
-
-  // relays
-  EEPROM.write(timer_index * 6 + 5, (Timers[timer_index]).relays);
-
+  
+  int eeAddress = sizeof(Timer) * timer_index; //EEPROM address to start reading from
+  EEPROM.put(eeAddress, Timers[timer_index]);
 }
 
 // interrupt handler
