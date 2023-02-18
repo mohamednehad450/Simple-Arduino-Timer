@@ -106,6 +106,9 @@ typedef struct Timer {
 // Timers array
 Timer* Timers = (Timer*)malloc(sizeof(Timer) * TIMERS_COUNT);
 
+
+boolean error = false;
+
 //-----------------------------------------------------------------------------------------------------------
 
 
@@ -670,10 +673,15 @@ void should_stop(DateTime now) {
 void setup() {
   // RTC and lcd setup
   Wire.begin();
-  RTC.begin();
+
   lcd.init();
   lcd.backlight();
 
+  if (!RTC.begin()) {
+    error = true;
+    lcd.print("RTC not found.");
+    return;
+  }
   // Menu button
   attachInterrupt(SELECT_PIN, Menu, RISING);
 
@@ -705,6 +713,7 @@ void setup() {
 }
 
 void loop() {
+  if (error) return;
 
   if (timers_menu_mode) {
     if (main_menu_mode) {
