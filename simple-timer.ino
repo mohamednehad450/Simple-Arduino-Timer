@@ -17,14 +17,14 @@ typedef struct Relay {
 };
 
 // Change pin and on_state to correspond with your setup)
-const Relay RELAY_1 = { on_state: LOW, pin: A0 };
-const Relay RELAY_2 = { on_state: LOW, pin: A1 };
-const Relay RELAY_3 = { on_state: LOW, pin: A2 };
-const Relay RELAY_4 = { on_state: LOW, pin: A3 };
-const Relay RELAY_5 = { on_state: LOW, pin: 13 };
-const Relay RELAY_6 = { on_state: LOW, pin: 12 };
-const Relay RELAY_7 = { on_state: LOW, pin: 11 };
-const Relay RELAY_8 = { on_state: LOW, pin: 10 };
+const Relay RELAY_1 = { on_state: LOW, pin: 6 };
+const Relay RELAY_2 = { on_state: LOW, pin: 7 };
+const Relay RELAY_3 = { on_state: LOW, pin: 8 };
+const Relay RELAY_4 = { on_state: LOW, pin: 9 };
+const Relay RELAY_5 = { on_state: LOW, pin: 10 };
+const Relay RELAY_6 = { on_state: LOW, pin: 11 };
+const Relay RELAY_7 = { on_state: LOW, pin: 12 };
+const Relay RELAY_8 = { on_state: LOW, pin: 13 };
 
 
 const Relay RELAYS[8] = { RELAY_1, RELAY_2, RELAY_3, RELAY_4, RELAY_5, RELAY_6, RELAY_7, RELAY_8 };
