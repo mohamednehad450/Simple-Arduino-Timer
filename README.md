@@ -35,7 +35,9 @@
 - 1 x 5v power supply
 
 ### Circuit diagram
-![Circuit](circuit.png "Circuit")
+Component list and diagram on [Circuito.io](https://www.circuito.io/app?components=97,97,97,97,512,11021,417986,442979,442979,821989)
+
+![Circuit](images/circuit.png "Circuit")
 
 ## Software
 
